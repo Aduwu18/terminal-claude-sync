@@ -33,7 +33,8 @@ python -m src.terminal_client --debug
 cd .devcontainer
 
 # Setup environment
-./setup_env.sh
+cp .env.example .env
+# Edit .env with your credentials
 
 # Start container
 docker-compose up -d
@@ -136,7 +137,6 @@ Located in `.devcontainer/`:
 | `Dockerfile` | Python 3.11 + Node.js 20 + Claude Code |
 | `docker-compose.yml` | Container orchestration with volume mounts |
 | `devcontainer.json` | VS Code Dev Containers configuration |
-| `setup_env.sh` | Interactive environment setup script |
 | `.env.example` | Environment variables template |
 
 ### Docker Volumes

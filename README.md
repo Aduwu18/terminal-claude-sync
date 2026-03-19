@@ -35,13 +35,8 @@ Standalone terminal CLI with Feishu synchronization. Extracted from `remote-clau
 
 ```bash
 cd .devcontainer
-
-# Interactive setup (recommended)
-./setup_env.sh
-
-# Or non-interactive mode
-./setup_env.sh --non-interactive
-# Then edit .env with your credentials
+cp .env.example .env
+# Edit .env with your credentials
 ```
 
 #### 2. Start Container
@@ -166,7 +161,6 @@ terminal-claude-sync/
 │   ├── Dockerfile           # Container image (Python 3.11 + Node 20)
 │   ├── docker-compose.yml   # Container orchestration
 │   ├── devcontainer.json    # VS Code Dev Containers config
-│   ├── setup_env.sh         # Environment setup script
 │   ├── .env.example         # Environment variables template
 │   └── README.md            # Docker setup guide
 ├── src/

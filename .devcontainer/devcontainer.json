@@ -5,7 +5,7 @@
     "context": "..",
     "workspaceFolder": "/app/terminal-claude-sync",
     "remoteUser": "developer",
-    "initializeCommand": "test -f .devcontainer/.env || bash .devcontainer/setup_env.sh --non-interactive",
+    "initializeCommand": "test -f .devcontainer/.env || cp .env.example .devcontainer/.env",
     "customizations": {
         "vscode": {
             "extensions": [

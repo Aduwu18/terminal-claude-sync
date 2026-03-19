@@ -12,10 +12,8 @@
 cd .devcontainer
 
 # 交互式设置（推荐）
-./setup_env.sh
-
-# 或使用非交互式模式（生成默认配置）
-./setup_env.sh --non-interactive
+cp .env.example .env
+# 使用编辑器修改 .env 填入你的配置
 ```
 
 ### 2. 启动开发容器
@@ -47,7 +45,6 @@ python -m src.terminal_client
 ├── Dockerfile              # 容器镜像定义
 ├── docker-compose.yml      # 容器编排配置
 ├── devcontainer.json       # VS Code Dev Containers 配置
-├── setup_env.sh            # 环境配置脚本
 ├── .env.example            # 环境变量模板
 ├── .env                    # 实际环境变量（需生成，不提交到 Git）
 └── README.md               # 本文件
@@ -79,24 +76,16 @@ python -m src.terminal_client
 
 ## 使用方式
 
-### 方式一：交互式设置
-
-```bash
-./setup_env.sh
-```
-
-脚本会提示您输入各项配置。
-
-### 方式二：手动编辑 .env
+### 方式一：手动编辑 .env
 
 复制模板并编辑：
 
 ```bash
 cp .env.example .env
-# 使用编辑器修改 .env
+# 使用编辑器修改 .env 填入你的配置
 ```
 
-### 方式三：命令行直接设置
+### 方式二：命令行直接设置
 
 ```bash
 export APP_ID="your_app_id"
@@ -121,10 +110,11 @@ docker-compose up -d
 ls -la .env
 ```
 
-如果不存在，运行：
+如果不存在，复制模板并编辑：
 
 ```bash
-./setup_env.sh
+cp .env.example .env
+# 使用编辑器修改 .env 填入你的配置
 ```
 
 ### 端口冲突
@@ -140,14 +130,6 @@ BRIDGE_PORT=8083
 ```bash
 docker-compose down
 docker-compose up -d
-```
-
-### 权限问题
-
-确保 `setup_env.sh` 有执行权限：
-
-```bash
-chmod +x setup_env.sh
 ```
 
 ## 参考链接
