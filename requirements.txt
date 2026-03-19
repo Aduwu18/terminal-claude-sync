@@ -1,0 +1,14 @@
+# Core dependencies
+aiohttp>=3.9.0
+redis>=5.0.0
+python-dotenv>=1.0.0
+PyYAML>=6.0
+
+# Feishu SDK
+lark-oapi>=1.2.0
+
+# Encryption for Feishu message verification
+pycryptodome>=3.20.0
+
+# Async support
+nest-asyncio>=1.5.8

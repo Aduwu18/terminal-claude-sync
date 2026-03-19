@@ -1,0 +1,28 @@
+# Terminal Claude Sync Configuration
+
+# Bridge server settings
+bridge:
+  port: 8082
+  host: "0.0.0.0"
+
+# Terminal session settings
+terminal_session:
+  enabled: true
+  user_open_id: ""  # REQUIRED: Your Feishu user open_id
+  group_name_prefix: "💻 Terminal"
+  auto_disband_on_exit: true
+
+# Sync mode configuration
+sync:
+  mode: "notify"  # "notify" (key events only) or "sync" (full output)
+
+# Permission confirmation settings
+permission:
+  dual_channel: true  # Enable dual-channel confirmation (CLI + Feishu)
+  cli_timeout: 60      # CLI confirmation timeout (seconds)
+  feishu_timeout: 300  # Feishu confirmation timeout (seconds)
+
+# Logging settings
+logging:
+  level: INFO  # DEBUG, INFO, WARNING, ERROR
+  file: "terminal-sync.log"
