@@ -5,6 +5,7 @@ CLI interface for Claude with Feishu synchronization.
 """
 import argparse
 import asyncio
+import fcntl
 import json
 import logging
 import os
@@ -245,33 +246,50 @@ class TerminalClient:
             # Set terminal to raw mode
             tty.setraw(sys.stdin)
 
-            # Main input loop
+            # Make stdin non-blocking
+            flags = fcntl.fcntl(sys.stdin, fcntl.F_GETFL)
+            fcntl.fcntl(sys.stdin, fcntl.F_SETFL, flags | os.O_NONBLOCK)
+
             loop = asyncio.get_event_loop()
 
             while self._running:
-                # Use select for stdin
-                ready, _, _ = select.select([sys.stdin], [], [], 0.1)
+                try:
+                    # Use async stdin reading instead of blocking select
+                    char = await loop.run_in_executor(None, self._read_stdin_char)
 
-                if ready:
-                    char = sys.stdin.read(1)
-                    if not char:
-                        break
+                    if char:
+                        # Forward to native client
+                        if self._native_client:
+                            self._native_client.write(char)
 
-                    # Forward to native client
-                    if self._native_client:
-                        self._native_client.write(char)
+                        # Check for Ctrl+C
+                        if char == "\x03":
+                            break
+                        # Check for Ctrl+D
+                        if char == "\x04":
+                            break
 
-                    # Check for Ctrl+C
-                    if char == "\x03":
-                        break
-                    # Check for Ctrl+D
-                    if char == "\x04":
-                        break
+                except Exception as e:
+                    if self._running:
+                        logger.debug(f"Error reading stdin: {e}")
+
+                # Small yield to let other tasks run
+                await asyncio.sleep(0.01)
 
         finally:
             # Restore terminal settings
             if self._original_termios:
                 termios.tcsetattr(sys.stdin, termios.TCSADRAIN, self._original_termios)
+
+    def _read_stdin_char(self) -> str:
+        """Read a single character from stdin (blocking)."""
+        ready, _, _ = select.select([sys.stdin], [], [], 0.05)
+        if ready:
+            try:
+                return sys.stdin.read(1)
+            except:
+                return ""
+        return ""
 
     async def _run_print_mode(self):
         """Run in print mode - each message is a new process."""
