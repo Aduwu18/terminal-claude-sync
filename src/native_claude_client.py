@@ -142,8 +142,9 @@ class NativeClaudePTYClient:
 
             self._running = True
 
-            if not self.raw_mode:
-                self._output_task = asyncio.create_task(self._read_output())
+            # Always start output reading - even in raw_mode
+            # In raw_mode, output is passed to on_output callback (if provided)
+            self._output_task = asyncio.create_task(self._read_output())
 
             logger.info(f"Claude CLI 已启动 (PID: {pid}, raw_mode={self.raw_mode})")
 
@@ -499,7 +500,7 @@ class NativeClaudeClient:
             self._pty_client = NativeClaudePTYClient(
                 session_id=self.session_id,
                 working_dir=self.working_dir,
-                on_output=self._handle_pty_output if not self.raw_pty else None,
+                on_output=self._handle_pty_output,  # Always forward PTY output
                 raw_mode=self.raw_pty,
             )
             await self._pty_client.start()
