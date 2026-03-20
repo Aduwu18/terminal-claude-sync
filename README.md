@@ -9,7 +9,7 @@ Standalone terminal CLI with Feishu synchronization.
 - **Dual-Channel Permissions**: Confirm sensitive operations from CLI or Feishu
 - **Session Management**: Auto-create/disband Feishu group chats
 - **Two Sync Modes**: `notify` (key events) or `sync` (full output)
-- **Docker Support**: Dev Container configuration for isolated development (mounts host environment)
+- **Container Integration**: Precompiled dependencies for mount-and-run in any Python 3.11+ container
 
 ## Architecture
 
@@ -29,29 +29,40 @@ Standalone terminal CLI with Feishu synchronization.
 
 ## Quick Start
 
-### Option A: Docker
+### Option A: Container Integration (Recommended)
 
-#### 1. Start Container
+Mount the project into any Python 3.11+ container (e.g., urbansar-invis). Uses precompiled dependencies in `libs/` with `PYTHONPATH` - no pip install needed.
 
-```bash
-cd .devcontainer
-docker-compose up -d
-docker-compose exec app bash
+#### 1. Add to docker-compose.yml
+
+```yaml
+volumes:
+  - ~/opt/feishu/terminal-claude-sync:/libs/terminal-claude-sync
+
+environment:
+  - APP_ID=${APP_ID}
+  - APP_SECRET=${APP_SECRET}
+  - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}
+
+ports:
+  - "${BRIDGE_PORT:-8082}:8082"
 ```
 
 #### 2. Run Inside Container
 
 ```bash
 # Terminal 1: Start Bridge Server
-python -m src.bridge
+/libs/terminal-claude-sync/start.sh bridge
 
 # Terminal 2: Start Terminal Client
-python -m src.terminal_client
+/libs/terminal-claude-sync/start.sh client --cli-mode print --sync-mode notify
 ```
 
-Note: Docker mounts your host `~/.claude` and `~/.gitconfig` (read-only), inheriting credentials from your local environment.
+#### 3. Verify
 
-See [.devcontainer/README.md](.devcontainer/README.md) for detailed Docker setup.
+```bash
+curl http://localhost:8082/health
+```
 
 ### Option B: Local Installation
 
@@ -152,11 +163,10 @@ This allows mobile confirmation via Feishu while working in terminal.
 
 ```
 terminal-claude-sync/
-├── .devcontainer/           # Docker development environment
-│   ├── Dockerfile           # Container image (Python 3.11 + Node 20)
-│   ├── docker-compose.yml   # Container orchestration
-│   ├── devcontainer.json    # VS Code Dev Containers config
-│   └── README.md            # Docker setup guide
+├── libs/                    # Precompiled Python 3.11 dependencies
+│   ├── aiohttp-*.whl
+│   ├── pycryptodome-*.whl
+│   └── ...
 ├── src/
 │   ├── __main__.py          # Main entry point
 │   ├── bridge/
@@ -178,6 +188,7 @@ terminal-claude-sync/
 ├── data/
 │   └── terminal_sessions.json   # Session persistence
 ├── config.yaml              # Configuration
+├── start.sh                 # Container startup script
 ├── requirements.txt
 ├── .env                     # Environment variables (not in git)
 └── README.md
