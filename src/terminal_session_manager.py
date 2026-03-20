@@ -309,7 +309,10 @@ def get_terminal_session_manager() -> TerminalSessionManager:
         from src.config import get_terminal_session_config
 
         config = get_terminal_session_config()
+        data_dir = config.get("data_dir", "data")
+        storage_path = f"{data_dir}/terminal_sessions.json"
         _session_manager = TerminalSessionManager(
+            storage_path=storage_path,
             user_open_id=config.get("user_open_id"),
             group_name_prefix=config.get("group_name_prefix", "💻 Terminal"),
             auto_disband_on_exit=config.get("auto_disband_on_exit", True),
@@ -321,10 +324,14 @@ def init_terminal_session_manager(
     user_open_id: str = None,
     group_name_prefix: str = "💻 Terminal",
     auto_disband_on_exit: bool = True,
+    storage_path: str = None,
 ) -> TerminalSessionManager:
     """初始化会话管理器"""
     global _session_manager
+    if storage_path is None:
+        storage_path = "data/terminal_sessions.json"
     _session_manager = TerminalSessionManager(
+        storage_path=storage_path,
         user_open_id=user_open_id,
         group_name_prefix=group_name_prefix,
         auto_disband_on_exit=auto_disband_on_exit,

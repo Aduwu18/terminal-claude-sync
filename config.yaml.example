@@ -11,6 +11,7 @@ terminal_session:
   user_open_id: ""  # REQUIRED: Your Feishu user open_id
   group_name_prefix: "💻 Terminal"
   auto_disband_on_exit: true
+  data_dir: "data"  # Can be overridden by TERMINAL_DATA_DIR env var (for read-only mount scenarios)
 
 # Sync mode configuration
 sync:

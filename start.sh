@@ -9,9 +9,20 @@ export TERMINAL_SYNC_DIR=${TERMINAL_SYNC_DIR:-/libs/terminal-claude-sync}
 # Python 路径：包含依赖目录和源码目录
 export PYTHONPATH=$TERMINAL_SYNC_DIR/libs:$TERMINAL_SYNC_DIR:$PYTHONPATH
 
+# 容器场景：项目目录可能是只读挂载，使用 /tmp 作为数据目录
+if [ -z "$TERMINAL_DATA_DIR" ]; then
+    # 检测是否在容器内且项目目录只读
+    if [ -f "$TERMINAL_SYNC_DIR/start.sh" ] && [ ! -w "$TERMINAL_SYNC_DIR" ]; then
+        export TERMINAL_DATA_DIR=/tmp/terminal-sync-data
+        mkdir -p $TERMINAL_DATA_DIR
+        echo "[INFO] Project dir is read-only, using $TERMINAL_DATA_DIR for data"
+    fi
+fi
+
 echo "=========================================="
 echo "Terminal Claude Sync"
 echo "Working Dir: $TERMINAL_SYNC_DIR"
+[ -n "$TERMINAL_DATA_DIR" ] && echo "Data Dir: $TERMINAL_DATA_DIR"
 echo "=========================================="
 
 cd $TERMINAL_SYNC_DIR

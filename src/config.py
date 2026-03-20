@@ -47,11 +47,15 @@ def get_terminal_session_config() -> dict:
             "auto_create_chat": bool,
             "auto_disband_on_exit": bool,
             "user_open_id": str,
-            "group_name_prefix": str
+            "group_name_prefix": str,
+            "data_dir": str
         }
     """
     config = load_config()
     terminal_config = config.get("terminal_session", {})
+
+    # 支持环境变量覆盖 data_dir（适用于只读挂载的容器场景）
+    data_dir = os.getenv("TERMINAL_DATA_DIR") or terminal_config.get("data_dir", "data")
 
     return {
         "enabled": terminal_config.get("enabled", True),
@@ -59,6 +63,7 @@ def get_terminal_session_config() -> dict:
         "auto_disband_on_exit": terminal_config.get("auto_disband_on_exit", True),
         "user_open_id": os.getenv("FEISHU_USER_OPEN_ID") or terminal_config.get("user_open_id", ""),
         "group_name_prefix": terminal_config.get("group_name_prefix", "💻 Terminal"),
+        "data_dir": data_dir,
     }
 
 
