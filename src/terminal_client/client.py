@@ -187,6 +187,7 @@ class TerminalClient:
             sync_mode=self.sync_mode,
             bridge_url=self.bridge_url,
             chat_id=self._session.get("chat_id") if self._session else None,
+            terminal_id=self.terminal_id,
             on_event=self._handle_native_event,
             raw_pty=(self.cli_mode == "pty"),
         )
@@ -239,11 +240,14 @@ class TerminalClient:
 
     async def _run_pty_mode(self):
         """Run in PTY mode - raw terminal interaction."""
+        # Wait for PTY subprocess to fully initialize
+        await asyncio.sleep(0.2)
+
         # Save original terminal settings
         self._original_termios = termios.tcgetattr(sys.stdin)
 
         try:
-            # Set terminal to raw mode
+            # Set terminal to raw mode for character-by-character input
             tty.setraw(sys.stdin)
 
             # Make stdin non-blocking
@@ -253,20 +257,33 @@ class TerminalClient:
             loop = asyncio.get_event_loop()
 
             while self._running:
+                # Check if native client's PTY process is still running
+                if self._native_client and self._native_client._pty_client:
+                    proc = self._native_client._pty_client._process
+                    if proc and proc.poll() is not None:
+                        logger.info(f"Claude CLI process exited with code {proc.returncode}")
+                        break
+
                 try:
                     # Use async stdin reading instead of blocking select
                     char = await loop.run_in_executor(None, self._read_stdin_char)
 
                     if char:
+                        # 调试：显示转换前的字符（如果有 \r）
+                        if char == '\r':
+                            logger.debug("Input: \\r (will be converted to \\n in write())")
+
                         # Forward to native client
                         if self._native_client:
                             self._native_client.write(char)
 
                         # Check for Ctrl+C
                         if char == "\x03":
+                            logger.info("User pressed Ctrl+C")
                             break
                         # Check for Ctrl+D
                         if char == "\x04":
+                            logger.info("User pressed Ctrl+D")
                             break
 
                 except Exception as e:
@@ -381,13 +398,17 @@ Just type your message and press Enter to chat with Claude.
         if hasattr(self, "_ws_session"):
             await self._ws_session.close()
 
-        # Close terminal session
+        # Close terminal session with timeout
         try:
             async with aiohttp.ClientSession() as session:
-                await session.post(
+                async with session.post(
                     f"{self.bridge_url}/terminal/close",
                     json={"terminal_id": self.terminal_id},
-                )
+                    timeout=aiohttp.ClientTimeout(total=5),  # 5 second timeout
+                ) as resp:
+                    pass
+        except asyncio.TimeoutError:
+            logger.warning("Timeout closing session (5s)")
         except Exception as e:
             logger.warning(f"Failed to close session: {e}")
 
