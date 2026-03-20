@@ -23,7 +23,7 @@ Usage:
 
 Terminal Client Options:
     --terminal-id      Terminal ID (auto-generated if not specified)
-    --bridge-url       Bridge server URL (default: http://localhost:8082)
+    --bridge-url       Bridge server URL (default: http://localhost:8081)
     --cli-mode         CLI mode: pty (interactive) or print (default: print)
     --sync-mode        Sync mode: notify or sync (default: notify)
     --user-open-id     Feishu user open_id

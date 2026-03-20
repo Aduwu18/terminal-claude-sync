@@ -16,7 +16,7 @@ Standalone terminal CLI with Feishu synchronization.
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │ Terminal CLI    │───►│ Bridge Server   │───►│ Feishu API      │
-│ (交互界面)       │    │ (:8082)         │    │ (权限/同步)      │
+│ (交互界面)       │    │ (:8081)         │    │ (权限/同步)      │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
         │                       │
         │ WebSocket             │ HTTP
@@ -60,7 +60,7 @@ ports:
 #### 3. Verify
 
 ```bash
-curl http://localhost:8082/health
+curl http://localhost:8081/health
 ```
 
 ### Option B: Local Installation
@@ -109,7 +109,7 @@ python -m src.terminal_client --cli-mode print --sync-mode notify
 ```
 Terminal Client Options:
     --terminal-id      Terminal ID (auto-generated if not specified)
-    --bridge-url       Bridge server URL (default: http://localhost:8082)
+    --bridge-url       Bridge server URL (default: http://localhost:8081)
     --cli-mode         CLI mode: pty (interactive) or print (default: print)
     --sync-mode        Sync mode: notify or sync (default: notify)
     --user-open-id     Feishu user open_id
@@ -195,7 +195,7 @@ terminal-claude-sync/
 
 ## API Endpoints
 
-Bridge Server (`:8082`):
+Bridge Server (`:8081`):
 
 | Endpoint | Method | Description |
 |----------|--------|-------------|

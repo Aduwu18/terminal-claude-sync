@@ -2,7 +2,7 @@
 
 # Bridge server settings
 bridge:
-  port: 8082
+  port: 8081
   host: "0.0.0.0"
 
 # Terminal session settings

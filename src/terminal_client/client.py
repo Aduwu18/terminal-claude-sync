@@ -39,7 +39,7 @@ class TerminalClient:
     def __init__(
         self,
         terminal_id: str = None,
-        bridge_url: str = "http://localhost:8082",
+        bridge_url: str = "http://localhost:8081",
         cli_mode: str = "print",  # "pty" or "print"
         sync_mode: str = "notify",  # "notify" or "sync"
         user_open_id: str = None,
@@ -386,7 +386,7 @@ async def main():
     )
     parser.add_argument(
         "--bridge-url",
-        default="http://localhost:8082",
+        default="http://localhost:8081",
         help="Bridge server URL",
     )
     parser.add_argument(

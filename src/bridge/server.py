@@ -42,7 +42,7 @@ class BridgeServer:
         POST /permission/response - Permission response from Feishu
     """
 
-    def __init__(self, port: int = 8082):
+    def __init__(self, port: int = 8081):
         self.port = port
         self.app = web.Application()
         self._setup_routes()
@@ -391,7 +391,7 @@ def get_bridge_server() -> BridgeServer:
     if _bridge_server is None:
         from src.config import get_bridge_config
         config = get_bridge_config()
-        _bridge_server = BridgeServer(port=config.get("port", 8082))
+        _bridge_server = BridgeServer(port=config.get("port", 8081))
     return _bridge_server
 
 

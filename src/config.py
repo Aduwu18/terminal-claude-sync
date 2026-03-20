@@ -72,7 +72,7 @@ def get_bridge_config() -> dict:
     config = load_config()
     bridge_config = config.get("bridge", {})
     return {
-        "port": bridge_config.get("port", 8082),
+        "port": bridge_config.get("port", 8081),
         "host": bridge_config.get("host", "0.0.0.0"),
     }
 
