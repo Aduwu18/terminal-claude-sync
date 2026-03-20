@@ -16,16 +16,22 @@ Standalone terminal CLI with Feishu synchronization.
 ```
 ┌─────────────────┐    ┌─────────────────┐    ┌─────────────────┐
 │ Terminal CLI    │───►│ Bridge Server   │───►│ Feishu API      │
-│ (交互界面)       │    │ (:8081)         │    │ (权限/同步)      │
+│ (交互界面)       │    │ (:8081)         │    │ (HTTP 发送消息)  │
 └─────────────────┘    └─────────────────┘    └─────────────────┘
-        │                       │
-        │ WebSocket             │ HTTP
-        ▼                       ▼
-┌─────────────────┐    ┌─────────────────┐
-│ Native Client   │───►│ Claude CLI      │
-│ (PTY/Print)     │    │ (原生进程)       │
-└─────────────────┘    └─────────────────┘
+        │                       │                       ▲
+        │ WebSocket             │ HTTP                  │
+        ▼                       ▼                       │
+┌─────────────────┐    ┌─────────────────┐              │
+│ Native Client   │───►│ Claude CLI      │              │
+│ (PTY/Print)     │    │ (原生进程)       │              │
+└─────────────────┘    └─────────────────┘              │
+                              │                         │
+                              │ WebSocket Long-Conn     │
+                              └─────────────────────────┘
+                                  (接收飞书事件推送)
 ```
+
+**Key Feature**: Bridge Server uses WebSocket long-connection to receive Feishu events, eliminating the need for a public webhook URL. This enables operation in internal network environments.
 
 ## Quick Start
 
@@ -171,7 +177,8 @@ terminal-claude-sync/
 │   ├── bridge/
 │   │   ├── __init__.py
 │   │   ├── __main__.py
-│   │   └── server.py        # Bridge HTTP/WebSocket server
+│   │   ├── server.py           # Bridge HTTP/WebSocket server
+│   │   └── feishu_ws_client.py # Feishu WebSocket long-connection client
 │   ├── terminal_client/
 │   │   ├── __init__.py
 │   │   ├── __main__.py
@@ -215,10 +222,13 @@ Required permissions:
 - `im:message` - Basic message permissions
 - `im:message:send_as_bot` - Send messages as bot
 
-Required events:
+Required events (received via WebSocket long-connection, no webhook needed):
 - `im.message.receive_v1` - Receive messages
+- `card.action.trigger` - Card button interactions (permissions)
 - `im.chat.member.user_withdrawn_v1` - User leaves group
 - `im.chat.disbanded_v1` - Group disbanded
+
+> **Note**: No public webhook URL required. Events are received through WebSocket long-connection.
 
 ## Environment Variables
 

@@ -8,10 +8,12 @@ Features:
 - Terminal session management (create/close/sync)
 - Permission handling (request/response from Feishu)
 - Health checks
+- Feishu WebSocket long-connection for receiving events
 """
 import asyncio
 import json
 import logging
+import os
 from typing import Optional, Dict, Any
 
 from aiohttp import web, WSMsgType
@@ -23,6 +25,7 @@ from src.terminal_session_manager import (
 from src.native_claude_client import NativeClaudeClient, NativeEventType
 from src.feishu_utils.card_builder import build_permission_card
 from src.feishu_utils.feishu_utils import send_card_message
+from .feishu_ws_client import FeishuWebSocketClient, create_feishu_ws_client_from_env
 
 logger = logging.getLogger(__name__)
 
@@ -40,6 +43,12 @@ class BridgeServer:
         POST /terminal/sync       - Sync output/status
         POST /permission/request  - Permission request from CLI
         POST /permission/response - Permission response from Feishu
+
+    Feishu Events (via WebSocket long-connection):
+        - im.message.receive_v1          - 消息接收
+        - card.action.trigger            - 卡片交互（权限确认）
+        - im.chat.disbanded_v1           - 群聊解散
+        - im.chat.member.user_withdrawn_v1 - 成员退出
     """
 
     def __init__(self, port: int = 8081):
@@ -51,6 +60,9 @@ class BridgeServer:
         self._native_clients: Dict[str, NativeClaudeClient] = {}
         self._permission_futures: Dict[str, asyncio.Future] = {}
         self._ws_connections: Dict[str, web.WebSocketResponse] = {}
+
+        # Feishu WebSocket 长连接客户端
+        self._feishu_ws_client: Optional[FeishuWebSocketClient] = None
 
     def _setup_routes(self):
         """Setup HTTP routes."""
@@ -66,6 +78,19 @@ class BridgeServer:
     async def start(self):
         """Start the server."""
         self._session_manager = get_terminal_session_manager()
+
+        # 启动 Feishu WebSocket 长连接客户端
+        self._feishu_ws_client = create_feishu_ws_client_from_env(
+            on_message=self._handle_feishu_message,
+            on_card_action=self._handle_feishu_card_action,
+            on_chat_disbanded=self._handle_feishu_chat_disbanded,
+            on_member_withdrawn=self._handle_feishu_member_withdrawn,
+        )
+        if self._feishu_ws_client:
+            self._feishu_ws_client.start()
+            logger.info("Feishu WebSocket client started")
+        else:
+            logger.warning("Feishu WebSocket client not available, running in HTTP-only mode")
 
         runner = web.AppRunner(self.app)
         await runner.setup()
@@ -95,12 +120,17 @@ class BridgeServer:
         """Detailed status endpoint."""
         sessions = self._session_manager.list_sessions() if self._session_manager else []
 
+        feishu_ws_status = "disabled"
+        if self._feishu_ws_client:
+            feishu_ws_status = "connected" if self._feishu_ws_client.is_running else "disconnected"
+
         return web.json_response({
             "status": "ok",
             "active_sessions": len(sessions),
             "active_clients": len(self._native_clients),
             "pending_permissions": len(self._permission_futures),
             "ws_connections": len(self._ws_connections),
+            "feishu_ws_status": feishu_ws_status,
             "sessions": [
                 {
                     "terminal_id": s.terminal_id,
@@ -379,6 +409,158 @@ class BridgeServer:
         ws = self._ws_connections.get(terminal_id)
         if ws:
             await ws.send_json(data)
+
+    # =========================================================================
+    # Feishu WebSocket Event Handlers
+    # =========================================================================
+
+    async def _handle_feishu_message(self, event: Any):
+        """
+        处理飞书消息事件
+
+        当用户在飞书群聊中发送消息时触发。
+        消息会转发到对应的 Terminal CLI。
+        """
+        try:
+            chat_id = event.event.message.chat_id
+            message_type = event.event.message.message_type
+            content = event.event.message.content
+            sender_id = event.event.sender.sender_id.open_id
+
+            logger.info(f"Feishu message received: chat_id={chat_id}, type={message_type}")
+
+            # 查找对应的 terminal_id
+            terminal_id = self._session_manager.get_terminal_id(chat_id)
+            if not terminal_id:
+                logger.debug(f"No terminal session for chat_id={chat_id}")
+                return
+
+            # 转发消息到 Terminal CLI
+            ws = self._ws_connections.get(terminal_id)
+            if ws:
+                await ws.send_json({
+                    "type": "feishu_message",
+                    "chat_id": chat_id,
+                    "sender_id": sender_id,
+                    "message_type": message_type,
+                    "content": content,
+                })
+
+        except Exception as e:
+            logger.error(f"Handle Feishu message error: {e}", exc_info=True)
+
+    async def _handle_feishu_card_action(self, event: Any):
+        """
+        处理飞书卡片交互事件
+
+        当用户点击卡片按钮（如权限确认）时触发。
+        """
+        try:
+            action_value = event.event.action.value
+            open_message_id = event.event.open_message_id
+            operator_id = event.event.operator.open_id
+
+            logger.info(f"Feishu card action: value={action_value}, operator={operator_id}")
+
+            # 解析 action
+            action = action_value.get("action", "")
+            chat_id = action_value.get("chat_id", "")
+
+            if action in ("permission_approve", "permission_deny"):
+                approved = action == "permission_approve"
+
+                # 查找 terminal_id
+                terminal_id = self._session_manager.get_terminal_id(chat_id)
+                if not terminal_id:
+                    logger.warning(f"No terminal session for chat_id={chat_id}")
+                    return
+
+                # 解析待处理的权限请求
+                for request_id, future in list(self._permission_futures.items()):
+                    if request_id.startswith(f"{terminal_id}:"):
+                        if not future.done():
+                            future.set_result(approved)
+                            logger.info(f"Permission {action} for {request_id}")
+
+                # 转发到 WebSocket
+                ws = self._ws_connections.get(terminal_id)
+                if ws:
+                    await ws.send_json({
+                        "type": "permission_response",
+                        "approved": approved,
+                    })
+
+                # 转发到 native client
+                client = self._native_clients.get(terminal_id)
+                if client:
+                    await client.resolve_permission(approved)
+
+        except Exception as e:
+            logger.error(f"Handle Feishu card action error: {e}", exc_info=True)
+
+    async def _handle_feishu_chat_disbanded(self, event: Any):
+        """
+        处理群聊解散事件
+
+        当飞书群聊被解散时，清理对应的 terminal session。
+        """
+        try:
+            chat_id = event.event.chat.chat_id
+
+            logger.info(f"Feishu chat disbanded: chat_id={chat_id}")
+
+            # 查找对应的 terminal_id
+            terminal_id = self._session_manager.get_terminal_id(chat_id)
+            if not terminal_id:
+                logger.debug(f"No terminal session for chat_id={chat_id}")
+                return
+
+            # 清理 session（不解散群聊，因为已经解散了）
+            await self._session_manager.close_session(
+                terminal_id=terminal_id,
+                disband_chat=False,
+            )
+
+            # 通知 Terminal CLI
+            ws = self._ws_connections.get(terminal_id)
+            if ws:
+                await ws.send_json({
+                    "type": "chat_disbanded",
+                    "chat_id": chat_id,
+                })
+
+        except Exception as e:
+            logger.error(f"Handle Feishu chat disbanded error: {e}", exc_info=True)
+
+    async def _handle_feishu_member_withdrawn(self, event: Any):
+        """
+        处理成员退出群聊事件
+
+        当用户退出飞书群聊时触发。
+        """
+        try:
+            chat_id = event.event.chat.chat_id
+            user_id = event.event.operator.open_id
+
+            logger.info(f"Feishu member withdrawn: chat_id={chat_id}, user={user_id}")
+
+            # 查找对应的 terminal_id
+            terminal_id = self._session_manager.get_terminal_id(chat_id)
+            if not terminal_id:
+                logger.debug(f"No terminal session for chat_id={chat_id}")
+                return
+
+            # 转发到 Terminal CLI
+            ws = self._ws_connections.get(terminal_id)
+            if ws:
+                await ws.send_json({
+                    "type": "member_withdrawn",
+                    "chat_id": chat_id,
+                    "user_id": user_id,
+                })
+
+        except Exception as e:
+            logger.error(f"Handle Feishu member withdrawn error: {e}", exc_info=True)
 
 
 # Global instance
