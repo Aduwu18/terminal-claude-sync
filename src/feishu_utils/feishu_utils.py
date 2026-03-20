@@ -23,14 +23,52 @@ app_secret = os.getenv('APP_SECRET')
 assert app_id and app_secret, 'app_id and app_secret is required'
 
 
+def _parse_api_response(response: requests.Response, api_name: str = "API") -> dict:
+    """
+    统一解析飞书 API 响应
+
+    Args:
+        response: requests Response 对象
+        api_name: API 名称，用于错误日志
+
+    Returns:
+        dict: 解析后的 JSON 数据
+
+    Raises:
+        Exception: 当响应不是有效 JSON 或解析失败时
+    """
+    logger.debug(f"{api_name} response status: {response.status_code}")
+
+    # 记录响应文本前 500 字符用于调试
+    response_text = response.text or ''
+    logger.debug(f"{api_name} response text: {response_text[:500]}")
+
+    # 检查响应是否为空
+    if not response_text.strip():
+        raise Exception(f'{api_name} 失败: API 返回空响应 (status={response.status_code})')
+
+    try:
+        return response.json()
+    except json.JSONDecodeError as e:
+        logger.error(f"{api_name} JSON decode error: {e}")
+        logger.error(f"{api_name} raw response: {response_text}")
+        raise Exception(f'{api_name} 失败: API 返回非 JSON 响应 (status={response.status_code}): {response_text[:200]}')
+
+
 def get_tenant_access_token():
     """
     获取飞书的tenant_access_token
     """
-    res = requests.post(
+    response = requests.post(
         url='https://open.feishu.cn/open-apis/auth/v3/app_access_token/internal',
         json={"app_id": app_id, "app_secret": app_secret}
-    ).json()
+    )
+
+    res = _parse_api_response(response, "get_tenant_access_token")
+
+    if 'app_access_token' not in res:
+        raise Exception(f'获取 access_token 失败: {json.dumps(res, ensure_ascii=False)}')
+
     return res['app_access_token']
 
 
@@ -51,8 +89,8 @@ def reply_message(message_id, text, access_token=None):
         "content": json.dumps(ret_data, ensure_ascii=False, indent=4),
         'uuid': str(datetime.datetime.now().timestamp())
     }
-    res = requests.post(url, headers=get_headers(access_token), json=body).json()
-    return res
+    response = requests.post(url, headers=get_headers(access_token), json=body)
+    return _parse_api_response(response, "reply_message")
 
 
 def send_message(receive_id, text, access_token=None):
@@ -70,8 +108,8 @@ def send_message(receive_id, text, access_token=None):
         "content": json.dumps(ret_data, ensure_ascii=False, indent=4),
         'uuid': str(datetime.datetime.now().timestamp())
     }
-    res = requests.post(url, headers=get_headers(access_token), json=body, params=param).json()
-    return res
+    response = requests.post(url, headers=get_headers(access_token), json=body, params=param)
+    return _parse_api_response(response, "send_message")
 
 
 def send_markdown_message(receive_id: str, text: str, title: str = "", access_token=None) -> dict:
@@ -116,7 +154,8 @@ def create_group_chat(user_open_id: str, name: str, access_token=None) -> str:
         "name": name,
         "user_id_list": [user_open_id]
     }
-    res = requests.post(url, headers=get_headers(access_token), json=body).json()
+    response = requests.post(url, headers=get_headers(access_token), json=body)
+    res = _parse_api_response(response, "create_group_chat")
     if res['code'] != 0:
         raise Exception(f'创建群聊失败: {json.dumps(res, ensure_ascii=False)}')
     return res['data']['chat_id']
@@ -139,7 +178,9 @@ def disband_group_chat(chat_id: str, access_token=None) -> bool:
         access_token = get_tenant_access_token()
 
     url = f'https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}/disband'
-    res = requests.post(url, headers=get_headers(access_token)).json()
+    response = requests.post(url, headers=get_headers(access_token))
+    res = _parse_api_response(response, "disband_group_chat")
+
     if res['code'] != 0:
         # 群聊不存在或已解散，视为成功
         if res['code'] == 230001:
@@ -164,7 +205,8 @@ def get_chat_info(chat_id: str, access_token=None) -> dict:
         access_token = get_tenant_access_token()
 
     url = f'https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}'
-    res = requests.get(url, headers=get_headers(access_token)).json()
+    response = requests.get(url, headers=get_headers(access_token))
+    res = _parse_api_response(response, "get_chat_info")
     if res['code'] != 0:
         if res['code'] == 230001:
             return None
@@ -189,8 +231,8 @@ def send_card_message(receive_id: str, card_content: dict, access_token=None) ->
         'uuid': str(datetime.datetime.now().timestamp())
     }
 
-    res = requests.post(url, headers=get_headers(access_token), json=body, params=param)
-    return res.json()
+    response = requests.post(url, headers=get_headers(access_token), json=body, params=param)
+    return _parse_api_response(response, "send_card_message")
 
 
 def update_card_message(message_id: str, card_content: dict, access_token=None) -> dict:
@@ -205,8 +247,8 @@ def update_card_message(message_id: str, card_content: dict, access_token=None) 
         "msg_type": "interactive",
         "content": json.dumps(card_content, ensure_ascii=False)
     }
-    res = requests.patch(url, headers=get_headers(access_token), json=body)
-    return res.json()
+    response = requests.patch(url, headers=get_headers(access_token), json=body)
+    return _parse_api_response(response, "update_card_message")
 
 
 # 消息分块常量
