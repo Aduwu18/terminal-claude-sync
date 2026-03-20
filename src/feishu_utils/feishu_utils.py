@@ -12,8 +12,8 @@ import logging
 
 from dotenv import load_dotenv
 
-# 加载 .env 文件
-load_dotenv()
+# 加载 .env 文件（override=True 允许覆盖已存在的空值环境变量）
+load_dotenv(override=True)
 
 logger = logging.getLogger(__name__)
 

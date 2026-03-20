@@ -1,3 +1,9 @@
+# Precompiled dependencies (libs/)
+# Use: pip install -t libs/ -r requirements.txt
+libs/
+!libs/.gitkeep
+!libs/README.md
+
 # Python
 __pycache__/
 *.py[cod]

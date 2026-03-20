@@ -40,12 +40,11 @@ volumes:
   - ~/opt/feishu/terminal-claude-sync:/libs/terminal-claude-sync
 
 environment:
-  - APP_ID=${APP_ID}
-  - APP_SECRET=${APP_SECRET}
-  - ANTHROPIC_AUTH_TOKEN=${ANTHROPIC_AUTH_TOKEN}
+  - APP_ID=${FEISHU_APP_ID}
+  - APP_SECRET=${FEISHU_APP_SECRET}
 
 ports:
-  - "${BRIDGE_PORT:-8082}:8082"
+  - "${BRIDGE_PORT:-8081}:8081"
 ```
 
 #### 2. Run Inside Container
