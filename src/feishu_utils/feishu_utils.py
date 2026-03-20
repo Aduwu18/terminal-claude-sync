@@ -165,7 +165,7 @@ def disband_group_chat(chat_id: str, access_token=None) -> bool:
     """
     解散群聊
 
-    需要飞书应用开通 im:chat:write 权限
+    需要飞书应用开通 im:chat 权限
 
     Args:
         chat_id: 群聊 ID
@@ -177,16 +177,30 @@ def disband_group_chat(chat_id: str, access_token=None) -> bool:
     if access_token is None:
         access_token = get_tenant_access_token()
 
-    url = f'https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}/disband'
-    response = requests.post(url, headers=get_headers(access_token))
-    res = _parse_api_response(response, "disband_group_chat")
+    # 飞书 API 要求解散群聊使用 DELETE 方法
+    url = f'https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}'
+    response = requests.delete(url, headers=get_headers(access_token))
 
-    if res['code'] != 0:
+    # 检查是否返回非 JSON 响应
+    if response.status_code == 404:
+        logger.warning(f'群聊 {chat_id} 不存在或 API endpoint 已变更')
+        # 尝试旧版 API
+        url_old = f'https://open.feishu.cn/open-apis/im/v1/chats/{chat_id}/disband'
+        response = requests.post(url_old, headers=get_headers(access_token), json={})
+
+    try:
+        res = response.json()
+    except json.JSONDecodeError:
+        logger.error(f'disband_group_chat 返回非 JSON: status={response.status_code}, text={response.text[:200]}')
+        return False
+
+    if res.get('code') != 0:
         # 群聊不存在或已解散，视为成功
-        if res['code'] == 230001:
+        if res.get('code') == 230001:
             logger.warning(f'群聊 {chat_id} 不存在或已解散')
             return True
-        raise Exception(f'解散群聊失败: {json.dumps(res, ensure_ascii=False)}')
+        logger.error(f'解散群聊失败: {json.dumps(res, ensure_ascii=False)}')
+        return False
     return True
 
 

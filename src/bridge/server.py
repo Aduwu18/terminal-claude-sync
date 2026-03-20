@@ -41,7 +41,6 @@ class BridgeServer:
         POST /terminal/create     - Create terminal session
         POST /terminal/close      - Close terminal session
         POST /terminal/sync       - Sync output/status
-        POST /permission/request  - Permission request from CLI
         POST /permission/response - Permission response from Feishu
 
     Feishu Events (via WebSocket long-connection):
@@ -58,11 +57,13 @@ class BridgeServer:
 
         self._session_manager: Optional[TerminalSessionManager] = None
         self._native_clients: Dict[str, NativeClaudeClient] = {}
-        self._permission_futures: Dict[str, asyncio.Future] = {}
         self._ws_connections: Dict[str, web.WebSocketResponse] = {}
 
         # Feishu WebSocket 长连接客户端
         self._feishu_ws_client: Optional[FeishuWebSocketClient] = None
+
+        # 主事件循环引用
+        self._main_loop: Optional[asyncio.AbstractEventLoop] = None
 
     def _setup_routes(self):
         """Setup HTTP routes."""
@@ -77,14 +78,18 @@ class BridgeServer:
 
     async def start(self):
         """Start the server."""
+        # 保存主事件循环引用
+        self._main_loop = asyncio.get_running_loop()
+
         self._session_manager = get_terminal_session_manager()
 
-        # 启动 Feishu WebSocket 长连接客户端
+        # 启动 Feishu WebSocket 长连接客户端，传入主事件循环
         self._feishu_ws_client = create_feishu_ws_client_from_env(
             on_message=self._handle_feishu_message,
             on_card_action=self._handle_feishu_card_action,
             on_chat_disbanded=self._handle_feishu_chat_disbanded,
             on_member_withdrawn=self._handle_feishu_member_withdrawn,
+            event_loop=self._main_loop,
         )
         if self._feishu_ws_client:
             self._feishu_ws_client.start()
@@ -128,7 +133,6 @@ class BridgeServer:
             "status": "ok",
             "active_sessions": len(sessions),
             "active_clients": len(self._native_clients),
-            "pending_permissions": len(self._permission_futures),
             "ws_connections": len(self._ws_connections),
             "feishu_ws_status": feishu_ws_status,
             "sessions": [
@@ -180,13 +184,6 @@ class BridgeServer:
             client = self._native_clients.get(terminal_id)
             if client:
                 client.write(data.get("data", ""))
-
-        elif msg_type == "permission_response":
-            # Permission response from terminal user
-            approved = data.get("approved", False)
-            request_id = data.get("request_id")
-            if request_id and request_id in self._permission_futures:
-                self._permission_futures[request_id].set_result(approved)
 
         elif msg_type == "resize":
             # Terminal resize event
@@ -303,43 +300,41 @@ class BridgeServer:
             )
 
     async def _handle_permission_request(self, request: web.Request) -> web.Response:
-        """Permission request from native client to Feishu."""
+        """
+        Permission request from native client.
+
+        Sends a permission card to Feishu for user confirmation.
+        This endpoint returns immediately; the response comes via
+        _handle_permission_response when the user clicks a button.
+        """
         try:
             data = await request.json()
             terminal_id = data.get("terminal_id")
+            chat_id = data.get("chat_id")
             tool_name = data.get("tool_name")
             tool_input = data.get("tool_input", {})
-            timeout = data.get("timeout", 300)
+            request_id = data.get("request_id")
 
-            session = self._session_manager.get_session(terminal_id)
-            if not session:
-                return web.json_response(
-                    {"error": "session not found"},
-                    status=404,
-                )
+            # 如果没有 chat_id，从 session 获取
+            if not chat_id:
+                session = self._session_manager.get_session(terminal_id)
+                if not session:
+                    return web.json_response(
+                        {"error": "session not found"},
+                        status=404,
+                    )
+                chat_id = session.chat_id
+
+            logger.info(f"Sending permission card to Feishu: terminal={terminal_id}, tool={tool_name}")
 
             # Send permission card to Feishu
-            card = build_permission_card(tool_name, tool_input, session.chat_id)
-            send_card_message(session.chat_id, card)
+            card = build_permission_card(tool_name, tool_input, chat_id)
+            send_card_message(chat_id, card)
 
-            # Create future for response
-            request_id = f"{terminal_id}:{tool_name}"
-            future = asyncio.Future()
-            self._permission_futures[request_id] = future
-
-            try:
-                # Wait for response from Feishu or timeout
-                approved = await asyncio.wait_for(future, timeout=timeout)
-                return web.json_response({
-                    "approved": approved,
-                })
-            except asyncio.TimeoutError:
-                return web.json_response({
-                    "approved": False,
-                    "error": "timeout",
-                })
-            finally:
-                self._permission_futures.pop(request_id, None)
+            return web.json_response({
+                "status": "ok",
+                "request_id": request_id,
+            })
 
         except Exception as e:
             logger.error(f"Permission request failed: {e}")
@@ -349,12 +344,18 @@ class BridgeServer:
             )
 
     async def _handle_permission_response(self, request: web.Request) -> web.Response:
-        """Permission response from Feishu to native client."""
+        """
+        Permission response from Feishu to native client.
+
+        This is called when the user clicks a button on the permission card in Feishu.
+        The response is forwarded to the corresponding terminal's native client.
+        """
         try:
             data = await request.json()
             chat_id = data.get("chat_id")
             action = data.get("action")
             approved = action == "permission_approve"
+            request_id = data.get("request_id")
 
             # Find terminal_id by chat_id
             terminal_id = self._session_manager.get_terminal_id(chat_id)
@@ -364,24 +365,20 @@ class BridgeServer:
                     status=404,
                 )
 
-            # Resolve pending permission futures for this terminal
-            for request_id, future in list(self._permission_futures.items()):
-                if request_id.startswith(f"{terminal_id}:"):
-                    if not future.done():
-                        future.set_result(approved)
+            logger.info(f"Permission response from Feishu: terminal={terminal_id}, approved={approved}")
 
-            # Also forward to WebSocket if connected
+            # Forward to native client (this resolves the pending Future)
+            client = self._native_clients.get(terminal_id)
+            if client:
+                client.resolve_permission(approved, request_id)
+
+            # Also forward to WebSocket if connected (for terminal UI feedback)
             ws = self._ws_connections.get(terminal_id)
             if ws:
                 await ws.send_json({
                     "type": "permission_response",
                     "approved": approved,
                 })
-
-            # Also forward to native client
-            client = self._native_clients.get(terminal_id)
-            if client:
-                await client.resolve_permission(approved)
 
             return web.json_response({"status": "ok"})
 
@@ -475,25 +472,20 @@ class BridgeServer:
                     logger.warning(f"No terminal session for chat_id={chat_id}")
                     return
 
-                # 解析待处理的权限请求
-                for request_id, future in list(self._permission_futures.items()):
-                    if request_id.startswith(f"{terminal_id}:"):
-                        if not future.done():
-                            future.set_result(approved)
-                            logger.info(f"Permission {action} for {request_id}")
+                logger.info(f"Permission {action} for terminal={terminal_id}")
 
-                # 转发到 WebSocket
+                # 转发到 native client（这会解析等待中的 Future）
+                client = self._native_clients.get(terminal_id)
+                if client:
+                    client.resolve_permission(approved)
+
+                # 转发到 WebSocket（用于终端 UI 反馈）
                 ws = self._ws_connections.get(terminal_id)
                 if ws:
                     await ws.send_json({
                         "type": "permission_response",
                         "approved": approved,
                     })
-
-                # 转发到 native client
-                client = self._native_clients.get(terminal_id)
-                if client:
-                    await client.resolve_permission(approved)
 
         except Exception as e:
             logger.error(f"Handle Feishu card action error: {e}", exc_info=True)
@@ -505,7 +497,27 @@ class BridgeServer:
         当飞书群聊被解散时，清理对应的 terminal session。
         """
         try:
-            chat_id = event.event.chat.chat_id
+            # lark-oapi SDK 的 event 结构可能因版本不同而变化
+            # 尝试多种方式获取 chat_id
+            chat_id = None
+
+            # 方式 1: event.event.chat.chat_id (旧版)
+            if hasattr(event, 'event') and hasattr(event.event, 'chat'):
+                chat_id = event.event.chat.chat_id
+            # 方式 2: event.event.chat_id (新版可能的结构)
+            elif hasattr(event, 'event') and hasattr(event.event, 'chat_id'):
+                chat_id = event.event.chat_id
+            # 方式 3: 直接从 event 获取
+            elif hasattr(event, 'chat_id'):
+                chat_id = event.chat_id
+
+            if not chat_id:
+                # 打印 event 结构以便调试
+                logger.debug(f"Feishu chat disbanded event structure: {dir(event)}")
+                if hasattr(event, 'event'):
+                    logger.debug(f"event.event structure: {dir(event.event)}")
+                logger.warning("Could not extract chat_id from disbanded event")
+                return
 
             logger.info(f"Feishu chat disbanded: chat_id={chat_id}")
 
@@ -539,8 +551,26 @@ class BridgeServer:
         当用户退出飞书群聊时触发。
         """
         try:
-            chat_id = event.event.chat.chat_id
-            user_id = event.event.operator.open_id
+            # lark-oapi SDK 的 event 结构可能因版本不同而变化
+            chat_id = None
+            user_id = None
+
+            # 尝试多种方式获取 chat_id 和 user_id
+            if hasattr(event, 'event'):
+                if hasattr(event.event, 'chat'):
+                    chat_id = event.event.chat.chat_id
+                elif hasattr(event.event, 'chat_id'):
+                    chat_id = event.event.chat_id
+
+                if hasattr(event.event, 'operator') and hasattr(event.event.operator, 'open_id'):
+                    user_id = event.event.operator.open_id
+
+            if not chat_id:
+                logger.debug(f"Feishu member withdrawn event structure: {dir(event)}")
+                if hasattr(event, 'event'):
+                    logger.debug(f"event.event structure: {dir(event.event)}")
+                logger.warning("Could not extract chat_id from member_withdrawn event")
+                return
 
             logger.info(f"Feishu member withdrawn: chat_id={chat_id}, user={user_id}")
 

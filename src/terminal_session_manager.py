@@ -198,30 +198,51 @@ class TerminalSessionManager:
 
             session = self._sessions[terminal_id]
 
-            try:
-                await self.sync_status(terminal_id, "stopped", {
-                    "terminal_id": terminal_id,
-                    "hostname": session.hostname,
-                    "message": f"终端已关闭，共处理 {session.message_count} 条消息",
-                })
-            except Exception as e:
-                logger.warning(f"发送停止状态卡片失败: {e}")
+            # 后台异步发送停止状态，不阻塞
+            asyncio.create_task(self._async_send_stopped_status(terminal_id, session))
 
             if disband_chat is None:
                 disband_chat = self._auto_disband_on_exit
 
             if disband_chat:
-                try:
-                    disband_group_chat(session.chat_id)
-                    logger.info(f"解散群聊成功: {session.chat_id}")
-                except Exception as e:
-                    logger.error(f"解散群聊失败: {e}")
+                # 后台异步解散群聊，不阻塞退出流程
+                chat_id = session.chat_id
+                asyncio.create_task(self._async_disband_chat(chat_id))
 
             del self._sessions[terminal_id]
             self._save_sessions()
 
             logger.info(f"关闭会话: {terminal_id}")
             return True
+
+    async def _async_send_stopped_status(self, terminal_id: str, session: TerminalSession):
+        """后台异步发送停止状态"""
+        try:
+            await self.sync_status(terminal_id, "stopped", {
+                "terminal_id": terminal_id,
+                "hostname": session.hostname,
+                "message": f"终端已关闭，共处理 {session.message_count} 条消息",
+            })
+        except Exception as e:
+            logger.debug(f"发送停止状态失败: {e}")
+
+    async def _async_disband_chat(self, chat_id: str):
+        """后台异步解散群聊"""
+        try:
+            loop = asyncio.get_event_loop()
+            if loop.is_closed():
+                logger.debug(f"事件循环已关闭，跳过解散群聊: {chat_id}")
+                return
+            await loop.run_in_executor(None, disband_group_chat, chat_id)
+            logger.info(f"解散群聊成功: {chat_id}")
+        except RuntimeError as e:
+            # 事件循环已关闭或 executor 已关闭，忽略
+            if "shutdown" in str(e) or "closed" in str(e):
+                logger.debug(f"解散群聊跳过（事件循环已关闭）: {chat_id}")
+            else:
+                logger.debug(f"解散群聊失败: {e}")
+        except Exception as e:
+            logger.debug(f"解散群聊失败: {e}")
 
     async def sync_output(self, terminal_id: str, content: str) -> bool:
         """同步输出到群聊"""
