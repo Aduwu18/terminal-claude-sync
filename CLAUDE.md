@@ -32,14 +32,8 @@ python -m src.terminal_client --debug
 ```bash
 cd .devcontainer
 
-# Setup environment
-cp .env.example .env
-# Edit .env with your credentials
-
-# Start container
+# Start container (mounts host credentials)
 docker-compose up -d
-
-# Enter container
 docker-compose exec app bash
 
 # Inside container
@@ -137,9 +131,8 @@ Located in `.devcontainer/`:
 | `Dockerfile` | Python 3.11 + Node.js 20 + Claude Code |
 | `docker-compose.yml` | Container orchestration with volume mounts |
 | `devcontainer.json` | VS Code Dev Containers configuration |
-| `.env.example` | Environment variables template |
 
-### Docker Volumes
+Note: Docker mounts your host environment (read-only), inheriting `~/.claude` and `~/.gitconfig`.
 
 - Project code: `..:/app/terminal-claude-sync`
 - Claude config: `~/.claude/*` (read-only)

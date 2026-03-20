@@ -1,6 +1,6 @@
 # Terminal Claude Sync
 
-Standalone terminal CLI with Feishu synchronization. Extracted from `remote-claude-code` for simplified deployment.
+Standalone terminal CLI with Feishu synchronization.
 
 ## Features
 
@@ -9,7 +9,7 @@ Standalone terminal CLI with Feishu synchronization. Extracted from `remote-clau
 - **Dual-Channel Permissions**: Confirm sensitive operations from CLI or Feishu
 - **Session Management**: Auto-create/disband Feishu group chats
 - **Two Sync Modes**: `notify` (key events) or `sync` (full output)
-- **Docker Support**: Dev Container configuration for isolated development
+- **Docker Support**: Dev Container configuration for isolated development (mounts host environment)
 
 ## Architecture
 
@@ -29,24 +29,17 @@ Standalone terminal CLI with Feishu synchronization. Extracted from `remote-clau
 
 ## Quick Start
 
-### Option A: Docker (Recommended)
+### Option A: Docker
 
-#### 1. Setup Environment
+#### 1. Start Container
 
 ```bash
 cd .devcontainer
-cp .env.example .env
-# Edit .env with your credentials
-```
-
-#### 2. Start Container
-
-```bash
 docker-compose up -d
 docker-compose exec app bash
 ```
 
-#### 3. Run Inside Container
+#### 2. Run Inside Container
 
 ```bash
 # Terminal 1: Start Bridge Server
@@ -55,6 +48,8 @@ python -m src.bridge
 # Terminal 2: Start Terminal Client
 python -m src.terminal_client
 ```
+
+Note: Docker mounts your host `~/.claude` and `~/.gitconfig` (read-only), inheriting credentials from your local environment.
 
 See [.devcontainer/README.md](.devcontainer/README.md) for detailed Docker setup.
 
@@ -161,7 +156,6 @@ terminal-claude-sync/
 │   ├── Dockerfile           # Container image (Python 3.11 + Node 20)
 │   ├── docker-compose.yml   # Container orchestration
 │   ├── devcontainer.json    # VS Code Dev Containers config
-│   ├── .env.example         # Environment variables template
 │   └── README.md            # Docker setup guide
 ├── src/
 │   ├── __main__.py          # Main entry point

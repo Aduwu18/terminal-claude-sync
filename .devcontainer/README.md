@@ -2,33 +2,31 @@
 
 本目录包含 Terminal Claude Sync 开发环境的 Docker 配置文件。
 
+## 配置说明
+
+Docker 容器通过卷挂载直接继承宿主机的环境配置：
+
+- `~/.claude/*` → Claude 配置和凭证（只读）
+- `~/.gitconfig` → Git 配置（只读）
+- 项目目录 → 代码同步
+
+
 ## 快速开始
 
-### 1. 首次设置
-
-运行配置脚本生成 `.env` 文件：
+### 1. 启动开发容器
 
 ```bash
 cd .devcontainer
-
-# 交互式设置（推荐）
-cp .env.example .env
-# 使用编辑器修改 .env 填入你的配置
-```
-
-### 2. 启动开发容器
-
-```bash
 docker-compose up -d
 ```
 
-### 3. 进入容器
+### 2. 进入容器
 
 ```bash
 docker-compose exec app bash
 ```
 
-### 4. 在容器内运行
+### 3. 在容器内运行
 
 ```bash
 # 终端1：启动 Bridge Server
@@ -42,27 +40,36 @@ python -m src.terminal_client
 
 ```
 .devcontainer/
-├── Dockerfile              # 容器镜像定义
-├── docker-compose.yml      # 容器编排配置
-├── devcontainer.json       # VS Code Dev Containers 配置
-├── .env.example            # 环境变量模板
-├── .env                    # 实际环境变量（需生成，不提交到 Git）
-└── README.md               # 本文件
+├── Dockerfile           # 容器镜像定义
+├── docker-compose.yml   # 容器编排配置
+├── devcontainer.json    # VS Code Dev Containers 配置
+└── README.md            # 本文件
 ```
 
-## 环境变量配置
+## 环境变量说明
 
-### .env 文件说明
+容器继承宿主机的环境变量。在启动前，确保宿主机已配置：
 
 | 变量名 | 说明 | 必填 |
 |--------|------|------|
-| `UID` | 用户 ID（用于 Docker 权限） | 自动检测 |
-| `GID` | 用户组 ID（用于 Docker 权限） | 自动检测 |
 | `APP_ID` | 飞书应用 ID | **是** |
 | `APP_SECRET` | 飞书应用 Secret | **是** |
 | `ANTHROPIC_AUTH_TOKEN` | Claude API 认证 Token | **是** |
 | `ANTHROPIC_BASE_URL` | API 基础 URL（代理用） | 否 |
 | `BRIDGE_PORT` | Bridge 服务端口 | 否 (默认 8082) |
+
+### 配置方式
+
+在宿主机创建 `~/.claude/.env` 或在项目根目录创建 `.env`：
+
+```bash
+# 宿主机执行
+export APP_ID="your_app_id"
+export APP_SECRET="your_app_secret"
+export ANTHROPIC_AUTH_TOKEN="your_api_key"
+```
+
+或者使用 `config.yaml` 配置 `terminal_session.user_open_id`。
 
 ## VS Code Dev Containers
 
@@ -74,63 +81,19 @@ python -m src.terminal_client
 - Ruff (Linter)
 - Git History + GitLens
 
-## 使用方式
-
-### 方式一：手动编辑 .env
-
-复制模板并编辑：
-
-```bash
-cp .env.example .env
-# 使用编辑器修改 .env 填入你的配置
-```
-
-### 方式二：命令行直接设置
-
-```bash
-export APP_ID="your_app_id"
-export APP_SECRET="your_app_secret"
-export ANTHROPIC_AUTH_TOKEN="your_api_key"
-docker-compose up -d
-```
-
-## 安全提示
-
-- `.env` 文件包含敏感信息（API Key），已添加到 `.gitignore`
-- 不要将 `.env` 提交到版本控制
-- 定期轮换 API Key
-
 ## 故障排查
 
-### 容器启动失败
+### Claude 认证问题
 
-检查 `.env` 文件是否存在：
-
-```bash
-ls -la .env
-```
-
-如果不存在，复制模板并编辑：
+确保宿主机的 `~/.claude/` 目录存在且包含有效凭证：
 
 ```bash
-cp .env.example .env
-# 使用编辑器修改 .env 填入你的配置
+ls -la ~/.claude/
 ```
 
 ### 端口冲突
 
-如果 8082 端口被占用，修改 `.env` 中的 `BRIDGE_PORT`：
-
-```bash
-BRIDGE_PORT=8083
-```
-
-然后重启容器：
-
-```bash
-docker-compose down
-docker-compose up -d
-```
+如果 8082 端口被占用，可在 docker-compose.yml 中修改端口映射。
 
 ## 参考链接
 
